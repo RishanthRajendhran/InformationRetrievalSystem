@@ -24,7 +24,7 @@ else:
 
 class SearchEngine:
 
-	def __init__(self, args):
+	def __init__(self, args, k):
 		self.args = args
 
 		self.tokenizer = Tokenization()
@@ -32,7 +32,7 @@ class SearchEngine:
 		self.inflectionReducer = InflectionReduction()
 		self.stopwordRemover = StopwordRemoval()
 
-		self.informationRetriever = InformationRetrieval()
+		self.informationRetriever = InformationRetrieval(k)
 		self.evaluator = Evaluation()
 
 
@@ -252,10 +252,14 @@ if __name__ == "__main__":
 	args = parser.parse_args()
 
 	# Create an instance of the Search Engine
-	searchEngine = SearchEngine(args)
+	# Second parameter stands for the value of k in LSA
+	for k in [100, 200,400,600,800,1000,1200,1400]:
+		print(f"k = {k}")
+		searchEngine = SearchEngine(args,k)
 
-	# Either handle query from user or evaluate on the complete dataset 
-	if args.custom:
-		searchEngine.handleCustomQuery()
-	else:
-		searchEngine.evaluateDataset()
+		# Either handle query from user or evaluate on the complete dataset 
+		if args.custom:
+			searchEngine.handleCustomQuery()
+		else:
+			searchEngine.evaluateDataset()
+		print("**************")
