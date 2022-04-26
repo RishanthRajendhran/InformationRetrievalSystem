@@ -3,6 +3,10 @@ from util import *
 # Add your import statements here
 from itertools import chain
 
+k1HP = 0.3
+k2HP = 0.9
+b1HP = 0.025
+
 class InformationRetrieval():
 
 	def __init__(self, k):
@@ -29,20 +33,64 @@ class InformationRetrieval():
 		index = None
 
 		#Fill in code here
-		bigrams = []
+		newDocs = []
+		lemmatizer = WordNetLemmatizer()
+
 		for doc in docs:
-			bigramInDoc = list(nltk.bigrams(list(chain.from_iterable(doc))))
-			bigrams.extend(bigramInDoc)
-		bigrams = list(set(bigrams))
+			newDoc = []
+			for sentence in doc:
+				newSentence = []
+				# print(f"Sentence: {sentence}")
+				wordsInSentence = []
+				for word in sentence:
+					wordsInSentence.append(word.translate(str.maketrans(string.punctuation, " "*len(string.punctuation))))
+				for word in wordsInSentence:
+					if word in string.punctuation:
+						continue
+					# print(f"Word under consideration: {word}")
+					wordNetSense = lesk(sentence, word)
+					if wordNetSense:
+						# newSentence.extend(wordNetSense.lemma_names())
+
+						newSentence.append(str(wordNetSense).split("'")[1])
+						# for holo in wordNetSense.part_holonyms():
+						# 	newSentence.append(str(holo).split("'")[1])
+						# for entail in wordNetSense.entailments():
+						# 	newSentence.append(str(entail).split("'")[1])
+
+						# for ss in wn.synsets(word):
+						# 	if ss == wordNetSense:
+						# 		defn = list(set([lemmatizer.lemmatize(w) for w in str(ss.definition()).split(" ") if w not in list(stopwords.words('english'))]))
+						# 		# print(f"Definition: {defn}")
+						# 		newSentence.extend(defn)
+						# 		break
+					else:
+						newSentence.append(word)
+				newDoc.append(newSentence)
+			newDocs.append(newDoc)
+
+		docs = newDocs.copy()
+		del newDocs
+
+		words = list(set(chain.from_iterable(list(chain.from_iterable(docs)))))
+
+		# bigrams = []
+		# for doc in docs:
+		# 	bigramInDoc = list(nltk.bigrams(list(chain.from_iterable(doc))))
+		# 	bigrams.extend(bigramInDoc)
+		# bigrams = list(set(bigrams))
 
 		documentIndex = {}
 		invertedIndex = {}
 		docsRepr = {}
 
-		#Initialise inverted index for bigrams: number of documents the bigram occurs in 
-		#and list of docIDs the bigram occurs in
-		for bigr in bigrams:
-			invertedIndex[bigr] = {"docFreq":0, "containingDocs":[]}
+		for word in words:
+			invertedIndex[word] = {"numOccurs":[], "docFreq":0, "containingDocs":[]}
+
+		# #Initialise inverted index for bigrams: number of documents the bigram occurs in 
+		# #and list of docIDs the bigram occurs in
+		# for bigr in bigrams:
+		# 	invertedIndex[bigr] = {"docFreq":0, "containingDocs":[]}
 
 		#Populate the inverted index for words intialised above
 		#Go over each document and incement the docCounts for each word found in that document
@@ -50,10 +98,22 @@ class InformationRetrieval():
 		for i in range(len(docs)):
 			#Flatten the document which is stored as a list of list of words in each sentence 
 			#and store the bigrams 
-			documentIndex[docIDs[i]] = list(nltk.bigrams(list(chain.from_iterable(docs[i]))))
-			for bigr in list(set(documentIndex[docIDs[i]])):
-				invertedIndex[bigr]["docFreq"] += 1
-				invertedIndex[bigr]["containingDocs"].append(docIDs[i])
+			documentIndex[docIDs[i]] = list(chain.from_iterable(docs[i]))
+			#Find top 5 words in document based on frequency
+			wordsInDoc = [w for w in documentIndex[docIDs[i]] if w != " "]
+			topWords = [w for (w, c) in Counter(wordsInDoc).most_common(min(5, len(wordsInDoc)))]
+			for word in list(set(documentIndex[docIDs[i]])):
+				if word in words:
+					if word in topWords:
+						invertedIndex[word]["numOccurs"].append(documentIndex[docIDs[i]].count(word)+10)
+					else:
+						invertedIndex[word]["numOccurs"].append(documentIndex[docIDs[i]].count(word))
+					invertedIndex[word]["docFreq"] += 1
+					invertedIndex[word]["containingDocs"].append(docIDs[i])
+			# documentIndex[docIDs[i]] = list(nltk.bigrams(list(chain.from_iterable(docs[i]))))
+			# for bigr in list(set(documentIndex[docIDs[i]])):
+			# 	invertedIndex[bigr]["docFreq"] += 1
+			# 	invertedIndex[bigr]["containingDocs"].append(docIDs[i])
 		
 
 		# DFs = []
@@ -64,30 +124,58 @@ class InformationRetrieval():
 		# print(np.mean(DFs))
 		# exit(0)
 
-		#Remove bigrams which appear in too less documents
-		toRem = []
-		for bigr in list(invertedIndex.keys()):
-			if invertedIndex[bigr]["docFreq"] < 2:
-				if random.uniform(0,1) <= 0.95:
-					toRem.append(bigr) 
+		# #Remove bigrams which appear in too less documents
+		# toRem = []
+		# for bigr in list(invertedIndex.keys()):
+		# 	if invertedIndex[bigr]["docFreq"] < 2:
+		# 		if random.uniform(0,1) <= 0.5:
+		# 			toRem.append(bigr) 
 
-		for tR in toRem:
-			del invertedIndex[tR]
-			bigrams.remove(tR)
+		# for tR in toRem:
+		# 	del invertedIndex[tR]
+		# 	bigrams.remove(tR)
 
-		print(len(list(invertedIndex.keys())))
-		# exit(0)
+		#Average document length
+		avdl = 0
+		for doc in docs:
+			avdl += len(list(chain.from_iterable(doc)))
+		avdl /= len(docs)
 		
 		#Better to precompute document representation because time saving >>> storage 
 		for i in range(len(docs)):
-			docRepr = [0]*len(bigrams)
-			for bigr in list(set(documentIndex[docIDs[i]])):
-				if bigr not in bigrams:
+			docRepr = [0]*len(words)
+			curDocLen = len(list(chain.from_iterable(docs[i])))
+			for word in list(set(documentIndex[docIDs[i]])):
+				if word not in words:
 					continue
-				termFreq = documentIndex[docIDs[i]].count(bigr)/len(documentIndex[docIDs[i]])
-				docFreq = np.log(len(docs)/invertedIndex[bigr]["docFreq"])
-				docRepr[bigrams.index(bigr)] = termFreq*docFreq 
+				#TF-IDF weighting of terms
+				# termFreq = documentIndex[docIDs[i]].count(word)/len(documentIndex[docIDs[i]])
+				# docFreq = np.log(len(docs)/invertedIndex[word]["docFreq"])
+
+				fij = documentIndex[docIDs[i]].count(word)/len(documentIndex[docIDs[i]])
+				#Penalise long documents because usually shorter documents are more information dense
+				#Here kHP and bHP are hyperparameters
+				termFreq = ((k1HP+1)*fij)/(k1HP*(1-b1HP+b1HP*(curDocLen/avdl))+fij)
+				docFreq = np.log((len(docs)-invertedIndex[word]["docFreq"]+0.5)/(invertedIndex[word]["docFreq"]+0.5))
+
+				#Logarithmic weighting of terms
+				# termFreq = np.log(1+(documentIndex[docIDs[i]].count(word)/len(documentIndex[docIDs[i]])))
+				# docFreq = 0
+				# for z in range(len(invertedIndex[word]["numOccurs"])):
+				# 	docFreq += invertedIndex[word]["numOccurs"][z]*np.log(invertedIndex[word]["numOccurs"][z])
+				# docFreq /= np.log(len(docs))
+				# docFreq += 1
+
+				docRepr[words.index(word)] = termFreq*docFreq 
 			docsRepr[docIDs[i]] = docRepr
+			# docRepr = [0]*len(bigrams)
+			# for bigr in list(set(documentIndex[docIDs[i]])):
+			# 	if bigr not in bigrams:
+			# 		continue
+			# 	termFreq = documentIndex[docIDs[i]].count(bigr)/len(documentIndex[docIDs[i]])
+			# 	docFreq = np.log(len(docs)/invertedIndex[bigr]["docFreq"])
+			# 	docRepr[bigrams.index(bigr)] = termFreq*docFreq 
+			# docsRepr[docIDs[i]] = docRepr
 
 
 		docsTerms = list(docsRepr.values())
@@ -96,6 +184,8 @@ class InformationRetrieval():
 		#S - singular values associated with each latent concept
 		#Dh - transpose of the document matrix in terms of latent concepts
 		T, S, Dh = np.linalg.svd(termsDocs)
+
+		print(S.shape)
 		
 		#k-rank approximation
 		t = T[:, 0:self.k].copy()
@@ -110,7 +200,8 @@ class InformationRetrieval():
 		
 
 		index = {
-			"bigrams": bigrams,
+			# "bigrams": bigrams,
+			"words": words,
 			"documentIndex": documentIndex,
 			"invertedIndex": invertedIndex,
 			"docsRepr": docsRepr,
@@ -119,6 +210,7 @@ class InformationRetrieval():
 			"s": s,
 			"dh": dh,
 			"docIDs": docIDs,
+			"avdl": avdl,
 		}
 
 		self.index = index
@@ -147,14 +239,71 @@ class InformationRetrieval():
 
 		#Fill in code here
 		for query in queries:
-			bigramsInQuery = list(nltk.bigrams(list(chain.from_iterable(query))))
+			# bigramsInQuery = list(nltk.bigrams(list(chain.from_iterable(query))))
+
+			lemmatizer = WordNetLemmatizer()
+			newQuery = []
+			for sentence in query:
+				newSentence = []
+				wordsInSentence = []
+				for word in sentence:
+					wordsInSentence.append(word.translate(str.maketrans(string.punctuation, " "*len(string.punctuation))))
+				for word in wordsInSentence:
+					if word in string.punctuation:
+						continue
+					wordNetSense = lesk(sentence, word)
+					if wordNetSense:
+						# newSentence.extend(wordNetSense.lemma_names())
+						newSentence.append(str(wordNetSense).split("'")[1])
+
+						for holo in wordNetSense.part_holonyms():
+							newSentence.append(str(holo).split("'")[1])
+						for entail in wordNetSense.entailments():
+							newSentence.append(str(entail).split("'")[1])
+
+						# for ss in wn.synsets(word):
+						# 	if ss == wordNetSense:
+						# 		defn = list(set([lemmatizer.lemmatize(w) for w in str(ss.definition()).split(" ") if w not in list(stopwords.words('english'))]))
+						# 		newSentence.extend(defn)
+						# 		break
+					else:
+						newSentence.append(word)
+				newQuery.append(newSentence)
+
+			query = newQuery.copy()
+			del newQuery
+
+			wordsInQuery = list(chain.from_iterable(query))
+
 			queryRepr = [0]*len(list(self.index["invertedIndex"].keys()))
-			for bigram in list(set(bigramsInQuery)):
-				if bigram not in list(self.index["invertedIndex"].keys()):
+			for word in list(set(wordsInQuery)):
+			# for bigram in list(set(bigramsInQuery)):
+				if word not in list(self.index["invertedIndex"].keys()):
 					continue
-				termFreq = (bigramsInQuery.count(bigram))/(len(bigramsInQuery))
-				docFreq = np.log(len(list(self.index["documentIndex"].keys()))/self.index["invertedIndex"][bigram]["docFreq"])
-				queryRepr[list(self.index["invertedIndex"].keys()).index(bigram)] = termFreq*docFreq
+				# if bigram not in list(self.index["invertedIndex"].keys()):
+					# continue
+
+				#TF-IDF weighting of terms
+				# termFreq = (wordsInQuery.count(word))/(len(wordsInQuery))
+				# docFreq = np.log(len(list(self.index["documentIndex"].keys()))/self.index["invertedIndex"][word]["docFreq"])
+
+				fij = (wordsInQuery.count(word))/(len(wordsInQuery))
+				#Here k2HP and b2HP are hyperparameters
+				termFreq = ((k2HP + 1)*fij)/(k2HP + fij)
+				docFreq = np.log((len(list(self.index["documentIndex"].keys()))-self.index["invertedIndex"][word]["docFreq"]+0.5)/(self.index["invertedIndex"][word]["docFreq"]+0.5))
+				
+				#Logarithmic weighting of terms
+				# termFreq = np.log(1+(wordsInQuery.count(word))/(len(wordsInQuery)))
+				# docFreq = 0
+				# for z in range(len(self.index["invertedIndex"][word]["numOccurs"])):
+				# 	docFreq += self.index["invertedIndex"][word]["numOccurs"][z]*np.log(self.index["invertedIndex"][word]["numOccurs"][z])
+				# docFreq /= np.log(len(list(self.index["documentIndex"].keys())))
+				# docFreq += 1
+				
+				queryRepr[list(self.index["invertedIndex"].keys()).index(word)] = termFreq*docFreq
+				# termFreq = (bigramsInQuery.count(bigram))/(len(bigramsInQuery))
+				# docFreq = np.log(len(list(self.index["documentIndex"].keys()))/self.index["invertedIndex"][bigram]["docFreq"])
+				# queryRepr[list(self.index["invertedIndex"].keys()).index(bigram)] = termFreq*docFreq
 
 			pseudoDoc = np.dot(queryRepr, np.dot(self.index["t"], np.linalg.inv(np.diag(self.index["s"]))))
 			if np.linalg.norm(pseudoDoc) != 0:
@@ -164,6 +313,8 @@ class InformationRetrieval():
 			cosSimsIndex = []
 			for d in range(len(self.index["dh"].T)):
 				cosSim = np.dot(self.index["dh"].T[d],pseudoDoc)
+				# if cosSim < 0.5:
+				# 	continue
 				cosSims.append(cosSim)
 				cosSimsIndex.append(self.index["docIDs"][d])
 			doc_IDs_ordered.append([id for _, id in sorted(zip(cosSims, cosSimsIndex),reverse=True)])	

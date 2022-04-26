@@ -33,7 +33,7 @@ class Evaluation():
 		precision = -1
 
 		#Fill in code here
-		precision = np.sum([True if query_doc_IDs_ordered[i] in true_doc_IDs else False for i in range(k)])/k
+		precision = np.sum([True if query_doc_IDs_ordered[i] in true_doc_IDs else False for i in range(min(len(query_doc_IDs_ordered),k))])/k
 
 		return precision
 
@@ -106,7 +106,7 @@ class Evaluation():
 		recall = -1
 
 		#Fill in code here
-		recall = np.sum([True if query_doc_IDs_ordered[i] in true_doc_IDs else False for i in range(k)])/len(true_doc_IDs)
+		recall = np.sum([True if query_doc_IDs_ordered[i] in true_doc_IDs else False for i in range(min(len(query_doc_IDs_ordered), k))])/len(true_doc_IDs)
 
 		return recall
 
@@ -258,7 +258,7 @@ class Evaluation():
 
 		#Fill in code here
 		DCG = 0
-		for i in range(min(len(true_doc_IDs), k)):
+		for i in range(min(min(len(query_doc_IDs_ordered), len(true_doc_IDs)), k)):
 			relI = 0
 			for j in range(len(true_doc_IDs)):
 				if true_doc_IDs[j][0] == query_doc_IDs_ordered[i]:

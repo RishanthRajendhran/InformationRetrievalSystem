@@ -253,7 +253,7 @@ if __name__ == "__main__":
 
 	# Create an instance of the Search Engine
 	# Second parameter stands for the value of k in LSA
-	for k in [100, 200,400,600,800,1000,1200,1400]:
+	for k in [100, 125, 150, 175, 200]:
 		print(f"k = {k}")
 		searchEngine = SearchEngine(args,k)
 
