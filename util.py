@@ -17,4 +17,11 @@ import string
 
 from collections import Counter
 
+import gensim
+from gensim.models import FastText
+from soyclustering import SphericalKMeans
+from scipy.sparse import csr_matrix
+from soyclustering import proportion_keywords
+from soyclustering import visualize_pairwise_distance
+
 # Add any utility functions here
