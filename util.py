@@ -19,9 +19,12 @@ from collections import Counter
 
 import gensim
 from gensim.models import FastText
-from soyclustering import SphericalKMeans
-from scipy.sparse import csr_matrix
-from soyclustering import proportion_keywords
-from soyclustering import visualize_pairwise_distance
+from scipy.cluster.vq import kmeans2
+import matplotlib.pyplot as plt
+
+from gensim.test.utils import common_texts
+from gensim.models.doc2vec import Doc2Vec, TaggedDocument
+
+import wikipedia
 
 # Add any utility functions here

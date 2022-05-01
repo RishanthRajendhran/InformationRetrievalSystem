@@ -7,21 +7,14 @@ k1HP = 0.3
 k2HP = 0.9
 b1HP = 0.025
 
-# number of clusters
-K_clusters= 200
-sim_digree=0.3
-######### Clustering
+#Clustering
+numClusters = 500
+minCosSim = 0.3
 
 def findCosSim(a, b):
+	if np.linalg.norm(a) == 0 or np.linalg.norm(b) == 0:
+		return -1
 	return np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b))
-
-def spherical_kmeans(n_clusters_, list_of_words_vectors,sim_digree):
-	embeddings_matrix_csr = csr_matrix(list_of_words_vectors)
-	spherical_kmeans = SphericalKMeans( max_similar=sim_digree, init='similar_cut', 
-		n_clusters = n_clusters_)
-	labels = spherical_kmeans.fit_predict(embeddings_matrix_csr)
-	centers = spherical_kmeans.cluster_centers_
-	return labels , centers
 
 class InformationRetrieval():
 
@@ -94,76 +87,13 @@ class InformationRetrieval():
 		for doc in docs:
 			newDocs.append(list(chain.from_iterable(doc)))
 
-		model = FastText(newDocs, min_count=5)
-
-		wordEmbeddings = {}
-		wordsMap = []
-		embsMap = []
-		allDocEmbs = []
-
+		documents = [TaggedDocument(doc, [i]) for i, doc in enumerate(newDocs)]
+		model = Doc2Vec(vector_size=500, min_count=2, epochs=40, window=2)
+		model.build_vocab(documents)
+		model.train(documents, total_examples=model.corpus_count, epochs=model.epochs)
+		docEmbeddings = []
 		for doc in newDocs:
-			docEmb = []
-			for word in doc:
-				try:
-					emb = model.wv[word]
-					docEmb.append(emb)
-					wordEmbeddings.update({word: emb})
-				except: 
-					continue
-			allDocEmbs.append(docEmb)
-		for word in wordEmbeddings.keys():
-			wordsMap.append(word)
-			embsMap.append(wordEmbeddings[word])
-
-		labels , centers = spherical_kmeans(K_clusters , embsMap, sim_digree)
-		keywords = proportion_keywords(centers, labels, index2word=wordsMap)
-
-		conceptMap = {}
-		docConceptCounts = []	
-		
-		for doc in newDocs:
-			clusterCount = [0]*len(keywords)
-			f = False
-			for word in list(set(doc)):
-				for cl in range(len(keywords)):
-					if word in [f for (f,s) in keywords[cl]]:
-						if str(cl) not in conceptMap.keys():
-							conceptMap.update({
-								str(cl) : {
-									"docFreq": 0,
-									"docCounts": [0]*len(newDocs)
-								}
-							})
-
-						if conceptMap[str(cl)]["docCounts"][newDocs.index(doc)] == 0:
-							conceptMap[str(cl)]["docFreq"] += 1
-						conceptMap[str(cl)]["docCounts"][newDocs.index(doc)] += 1
-						clusterCount[cl] += doc.count(word)
-						f = True 
-			docConceptCounts.append(clusterCount)
-			if not f: 
-				# print(f"Not in any cluster: {doc}\n")
-				continue
-		# for concept in conceptMap.keys():
-		# 	df = conceptMap[concept].get("docFreq")
-		# 	print(f"{concept}: {df}/{len(newDocs)}")
-
-		docConcept = []
-
-		for doc in newDocs: 
-			docCounts = docConceptCounts[newDocs.index(doc)]
-			docRepr = [0]*len(docCounts)
-			for concept in list(conceptMap.keys()):
-				curConcept = docCounts[int(concept)]
-				if sum(docCounts):
-					curConcept /= sum(docCounts)
-				if conceptMap[concept]["docFreq"] != 0:
-					curConcept *= np.log(len(newDocs)/conceptMap[concept]["docFreq"])
-				docRepr[int(concept)] = curConcept
-			docConcept.append(docRepr)
-
-		# fig = visualize_pairwise_distance(centers, max_dist=.7, sort=True)
-		# fig.show()
+			docEmbeddings.append(model.infer_vector(doc))
 
 		# words = list(set(chain.from_iterable(list(chain.from_iterable(docs)))))
 
@@ -304,13 +234,8 @@ class InformationRetrieval():
 			# "dh": dh,
 			"docIDs": docIDs,
 			# "avdl": avdl,
-			"keywords": keywords,
-			"docConceptCounts": docConceptCounts,
-			"conceptMap": conceptMap,
-			"docConcept": docConcept,
-			"wordEmbeddings": wordEmbeddings,
-			"centers": centers,
-			"labels": labels,
+			"docEmbeddings": docEmbeddings,
+			"model": model,
 		}
 
 		self.index = index
@@ -333,33 +258,19 @@ class InformationRetrieval():
 			A list of lists of integers where the ith sub-list is a list of IDs
 			of documents in their predicted order of relevance to the ith query
 		"""
-
+		
+		print("Processing queries...")
 		doc_IDs_ordered = []
 
 		newQueries = list(chain.from_iterable(queries))
 		for query in newQueries:
-			clusterCount = [0]*len(self.index["keywords"])
-			f = False 
-			for word in list(set(query)):
-				if word not in self.index["wordEmbeddings"].keys():
-					continue
-				wordEmbed = self.index["wordEmbeddings"][word]
-				for c in range(len(self.index["centers"])):
-					cent = self.index["centers"][c]
-					curCosSim = findCosSim(cent, wordEmbed)
-					if curCosSim >= sim_digree:
-						clusterCount[int(self.index["labels"][c])] += 1
+			queryRepr = self.index["model"].infer_vector(query)
 
-			for cl in range(len(clusterCount)):
-				if sum(clusterCount):
-					clusterCount[cl] /= sum(clusterCount)
-				if self.index["conceptMap"][str(cl)]["docFreq"] != 0:
-					clusterCount[cl] *= np.log(len(self.index["docConceptCounts"])/self.index["conceptMap"][str(cl)]["docFreq"])
 			#Calculate cosine similarities
 			cosSims = []
 			cosSimsIndex = []
-			for d in range(len(self.index["docConcept"])):
-				cosSim = np.dot(self.index["docConcept"][d],clusterCount)
+			for d in range(len(self.index["docEmbeddings"])):
+				cosSim = findCosSim(self.index["docEmbeddings"][d], queryRepr)
 				cosSims.append(cosSim)
 				cosSimsIndex.append(self.index["docIDs"][d])
 			doc_IDs_ordered.append([id for _, id in sorted(zip(cosSims, cosSimsIndex),reverse=True)])	
